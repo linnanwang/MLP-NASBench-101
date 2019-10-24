@@ -18,31 +18,37 @@ from torch.autograd import Variable
 import json
 from torch import optim
 import numpy as np
-
+import random 
 
 
 class LinearModel(nn.Module):
-    
-    def __init__(self, input_dim, output_dim):
-        super(LinearModel, self).__init__()
-        self.fc1 = nn.Linear(input_dim, output_dim)
-        torch.nn.init.xavier_uniform_( self.fc1.weight )
-    
-    def forward(self, x):
-        y = self.fc1(x)
-        return y
-        
+
+    # def __init__(self, input_dim, output_dim):
+    #     super(LinearModel, self).__init__()
+    #     self.fc1 = nn.Linear(input_dim, output_dim)
+    #     torch.nn.init.xavier_uniform_( self.fc1.weight )
+
+    # def forward(self, x):
+    #     y = self.fc1(x)
+    #     return y
+
     def __init__(self, input_dim, output_dim):
         super(LinearModel, self).__init__()
         self.fc1 = nn.Linear(input_dim, 100)
         self.fc2 = nn.Linear(100, output_dim)
-        
+
         torch.nn.init.xavier_uniform_( self.fc1.weight )
-        torch.nn.init.xavier_uniform_( self.fc2.weight )        
-    
+        torch.nn.init.xavier_uniform_( self.fc2.weight )
+
+    def weights_init(self):
+        torch.nn.init.xavier_uniform_( self.fc1.weight )
+        torch.nn.init.xavier_uniform_( self.fc2.weight )
+
     def forward(self, x):
         x1 = self.fc1(x)
-        y  = self.fc2(x1)
+        x2 = torch.relu(x1)
+        y  = self.fc2(x2)
+        y  = torch.sigmoid(y)
         return y
 
 
@@ -83,29 +89,31 @@ noise = 0.2
 #
 
 def propose_location(predictor, X_samples, Y_samples, samples):
-    ''' Proposes the next sampling point by optimizing the acquisition function. 
-    Args: acquisition: Acquisition function. X_sample: Sample locations (n x d). 
-    Y_sample: Sample values (n x 1). gpr: A GaussianProcessRegressor fitted to samples. 
+    ''' Proposes the next sampling point by optimizing the acquisition function.
+    Args: acquisition: Acquisition function. X_sample: Sample locations (n x d).
+    Y_sample: Sample values (n x 1). gpr: A GaussianProcessRegressor fitted to samples.
     Returns: Location of the acquisition function maximum. '''
     dim = X_sample.shape[1]
     networks = []
     for network in samples.keys():
         networks.append( json.loads(network) )
+    networks = random.sample(networks, 4200 )
     X    = np.array( networks )
     X    = torch.from_numpy( np.asarray(X, dtype=np.float32).reshape(X.shape[0], X.shape[1]) )
+    
     Y    = predictor.forward( X )
     Y    = Y.data.numpy()
-    Y    = Y.reshape(len(samples) )
+    Y    = Y.reshape(len(networks) )
     X    = X.data.numpy()
     proposed_networks = []
-    n    = 50
+    n    = 200
     if Y.shape[0] < n:
         n = Y.shape[0]
     indices = np.argsort(Y)[-n:]
     print("indices:", indices.shape)
     #print( X[indices] )
-    proposed_networks = X[indices] 
-    
+    proposed_networks = X[indices]
+
     # for i in range(0, n):
     #     idx       = np.argmax( Y )
     #     best_arch = X[idx]
@@ -138,7 +146,7 @@ n_iter = 1000000000000
 # plt.subplots_adjust(hspace=0.4)
 #
 predictor  = LinearModel(49, 1)
-optimiser  = optim.Adam(predictor.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08)
+optimiser  = optim.Adam(predictor.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08)
 
 window_size = 100
 sample_counter = 0
@@ -150,14 +158,13 @@ for i in range(n_iter):
     chunks = int( X_sample.shape[0] / window_size )
     if  X_sample.shape[0] % window_size > 0:
         chunks += 1
-    
-    optimiser.zero_grad()
-
-    for epoch in range(0, 100):
+    predictor.weights_init( )
+    for epoch in range(0, 150):
         X_sample_split = np.array_split(X_sample, chunks)
         Y_sample_split = np.array_split(Y_sample, chunks)
         #print("epoch=", epoch)
         for i in range(0, chunks):
+            optimiser.zero_grad()
             inputs = torch.from_numpy( np.asarray(X_sample_split[i], dtype=np.float32).reshape(X_sample_split[i].shape[0], X_sample_split[i].shape[1]) )
             #print(inputs.shape, X_sample_split[i].shape, np.asarray(X_sample_split[i], dtype=np.float32).shape )
             outputs = predictor.forward( inputs )
@@ -193,12 +200,11 @@ for i in range(n_iter):
         print(network, acc)
         del samples[ json.dumps( network.tolist() ) ]
         Y_sample = np.vstack([Y_sample, acc] )
-     
-    
-     
-     
-     
-     
-     
-     
-     
+
+
+
+
+
+
+
+
